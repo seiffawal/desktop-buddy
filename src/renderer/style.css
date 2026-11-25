@@ -193,3 +193,23 @@ body.paused * { animation-play-state: paused !important; }
   30%      { transform: translateY(-14px) rotate(-8deg); }
   60%      { transform: translateY(0) rotate(8deg); }
 }
+/* ---------- Countdown under the buddy ---------- */
+.stage { position: relative; }
+
+.timer {
+  display: none;
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: rgba(30, 30, 30, 0.72);
+  color: #ffffff;
+  font: 600 11px/16px 'Segoe UI', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.timer.visible { display: block; }
+.timer.paused  { opacity: 0.6; }

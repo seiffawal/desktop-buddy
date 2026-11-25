@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const bus = require('../core/bus');
@@ -89,6 +89,40 @@ bus.subscribe('storage:changed', ({ path: changed }) => {
   if (changed === 'settings.quietMode' || changed === 'settings.doNotDisturb') showRestingMood();
 });
 
+// ---------- Sound ----------
+const soundOn = () => storage.get('settings.sound') !== false;
+
+function volume() {
+  const v = Number(storage.get('settings.volume'));
+  return v >= 0 && v <= 1 ? v : 0.5;
+}
+
+// 'force' is for the Test sound menu item, which ignores quiet mode and the sound switch
+function playSound(name, force = false) {
+  if (!win || win.isDestroyed()) return;
+  if (!force && (quiet() || !soundOn())) return;
+  win.webContents.send('sound:play', { name, volume: volume() });
+}
+
+bus.subscribe('sound:play', name => playSound(String(name)));
+
+// ---------- Countdown on the buddy ----------
+function formatTime(ms) {
+  const total = Math.ceil(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function sendTimerDisplay() {
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  const st = pomodoro.status();
+  win.webContents.send(
+    'timer:display',
+    st.phase === 'idle' ? { text: '' } : { text: formatTime(st.remainingMs), paused: !st.running }
+  );
+}
+
 // ---------- Window position ----------
 function loadPosition() {
   const pos = storage.get('buddy');
@@ -155,16 +189,21 @@ function createWindow() {
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      autoplayPolicy: 'no-user-gesture-required', // lets chimes play without a click
     },
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
-  win.webContents.once('did-finish-load', showRestingMood);
+  win.webContents.once('did-finish-load', () => {
+    showRestingMood();
+    pomodoro.restore(); // pick up an unfinished session from last time
+    sendTimerDisplay();
+  });
   win.on('move', onWindowMoved);
   win.on('system-context-menu', event => {
-    event.preventDefault();                          // block the Windows menu
-    buildTrayMenu().popup({ window: win });          // show our own, freshly built
+    event.preventDefault();                     // block the Windows menu
+    buildTrayMenu().popup({ window: win });     // show our own, freshly built
   });
 }
 
@@ -180,6 +219,7 @@ bus.subscribe('bubble:show', ({ message, compact }) => {
     bus.publish('buddy:mood', message.mood);
   }
   win.webContents.send('bubble:show', { message, compact });
+  sendTimerDisplay();
 });
 
 bus.subscribe('bubble:hide', () => {
@@ -229,14 +269,8 @@ function toggleBuddy() {
   } else {
     win.show();
     showRestingMood(); // pops back in
+    sendTimerDisplay();
   }
-}
-
-function formatTime(ms) {
-  const total = Math.ceil(ms / 1000);
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function pomodoroLabel(st) {
@@ -260,6 +294,17 @@ function pomodoroItems(st) {
     items.push({ label: 'Reset', click: () => bus.publish('pomodoro:reset') });
   }
   items.push({ type: 'separator' });
+
+  const current = pomodoro.currentPreset();
+  items.push({
+    label: 'Preset',
+    submenu: Object.entries(pomodoro.PRESETS).map(([key, preset]) => ({
+      label: preset.label,
+      type: 'radio',
+      checked: current === key,
+      click: () => bus.publish('pomodoro:preset', key),
+    })),
+  });
   items.push({
     label: 'Quick test (short phases)',
     enabled: st.phase === 'idle',
@@ -268,11 +313,34 @@ function pomodoroItems(st) {
   return items;
 }
 
+function soundItems() {
+  const current = volume();
+  const levels = [['Low', 0.25], ['Medium', 0.5], ['High', 0.8]];
+  return [
+    {
+      label: 'Sound on',
+      type: 'checkbox',
+      checked: soundOn(),
+      click: item => storage.set('settings.sound', item.checked),
+    },
+    { type: 'separator' },
+    ...levels.map(([label, value]) => ({
+      label: `Volume: ${label}`,
+      type: 'radio',
+      checked: Math.abs(current - value) < 0.01,
+      click: () => storage.set('settings.volume', value),
+    })),
+    { type: 'separator' },
+    { label: 'Test sound', click: () => playSound('focus-end', true) },
+  ];
+}
+
 // Built fresh every time it opens, so the time left and the checkboxes are always current
 function buildTrayMenu() {
   const st = pomodoro.status();
   return Menu.buildFromTemplate([
     { label: pomodoroLabel(st), submenu: pomodoroItems(st) },
+    { label: 'Sound', submenu: soundItems() },
     { type: 'separator' },
     { label: 'Show / Hide buddy', click: toggleBuddy },
     {
@@ -350,8 +418,12 @@ function createTray() {
   tray.on('right-click', () => tray.popUpContextMenu(buildTrayMenu()));
 }
 
-bus.subscribe('pomodoro:tick', updateTooltip);
-bus.subscribe('pomodoro:state', updateTooltip);
+function onPomodoroChange() {
+  updateTooltip();
+  sendTimerDisplay();
+}
+bus.subscribe('pomodoro:tick', onPomodoroChange);
+bus.subscribe('pomodoro:state', onPomodoroChange);
 
 // ---------- Core wiring ----------
 // Temporary: print events so you can watch the bus working.
@@ -368,6 +440,11 @@ app.whenReady().then(() => {
   pomodoro.init();
   createWindow();
   createTray();
+
+  // Sleep and wake: modules recheck their clocks when Windows wakes up
+  powerMonitor.on('suspend', () => bus.publish('system:suspend'));
+  powerMonitor.on('resume', () => bus.publish('system:resume'));
+
   bus.publish('app:ready');
 
   // Temporary greeting, delete when you like

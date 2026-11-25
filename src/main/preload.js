@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('buddy', {
   expand: height => ipcRenderer.invoke('bubble:expand', height),
   collapse: () => ipcRenderer.invoke('bubble:collapse'),
   bubbleClosed: (id, action) => ipcRenderer.send('bubble:closed', { id, action }),
+
+  onSound: callback => ipcRenderer.on('sound:play', (event, payload) => callback(payload)),
+  onTimer: callback => ipcRenderer.on('timer:display', (event, payload) => callback(payload)),
 });

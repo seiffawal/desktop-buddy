@@ -1,0 +1,9 @@
+{
+  "name": "Chick",
+  "type": "emoji",
+  "moods": {
+    "idle": { "emoji": "🐣", "animation": "breathe" },
+    "popin": { "emoji": "🐥", "animation": "popin", "once": true, "duration": 900 },
+    "sleepy": { "emoji": "🐣", "animation": "sleepy", "extra": "💤" }
+  }
+}

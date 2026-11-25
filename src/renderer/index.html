@@ -2,10 +2,15 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'" />
     <title>Desktop Buddy</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="buddy" id="buddy">🐣</div>
+    <div class="buddy" id="buddy">
+      <span class="face" id="face"></span>
+      <span class="extra" id="extra"></span>
+    </div>
+    <script src="buddy.js"></script>
   </body>
 </html>

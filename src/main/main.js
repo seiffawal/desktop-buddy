@@ -1,20 +1,67 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const bus = require('../core/bus');
 const storage = require('../core/storage');
 const { createMessage } = require('../core/message');
 
 const WIN_SIZE = 90;
+const CHARACTER = 'chick';                 // folder name in assets/characters
+const SLEEP_AFTER_MS = 10 * 60 * 1000;     // sleepy after 10 minutes without activity
 
 let win = null;
 let tray = null;
+let sleeping = false;
+let sleepTimer = null;
 
 // Only one copy of the app at a time
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
-// ---------- Remember position (now through the storage layer) ----------
+// ---------- Character data ----------
+ipcMain.handle('buddy:character', () => {
+  const file = path.join(__dirname, '../../assets/characters', CHARACTER, 'character.json');
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+});
+
+// ---------- Moods ----------
+const quiet = () => storage.get('settings.quietMode') || storage.get('settings.doNotDisturb');
+
+// Any module can change the buddy's mood: bus.publish('buddy:mood', 'idle')
+bus.subscribe('buddy:mood', mood => {
+  if (mood === 'sleepy') sleeping = true;
+  else if (mood !== 'popin') sleeping = false;
+  if (win && !win.isDestroyed()) win.webContents.send('buddy:mood', mood);
+});
+
+function resetSleepTimer() {
+  clearTimeout(sleepTimer);
+  sleepTimer = setTimeout(() => bus.publish('buddy:mood', 'sleepy'), SLEEP_AFTER_MS);
+}
+
+// The buddy's normal state: sleepy in quiet mode, otherwise idle with a pop-in
+function showRestingMood() {
+  if (quiet()) {
+    bus.publish('buddy:mood', 'sleepy');
+  } else {
+    bus.publish('buddy:mood', 'idle');
+    bus.publish('buddy:mood', 'popin');
+  }
+  resetSleepTimer();
+}
+
+function onActivity() {
+  if (sleeping && !quiet()) showRestingMood();
+  else resetSleepTimer();
+}
+
+// Quiet mode and do-not-disturb put the buddy to sleep; turning them off wakes it
+bus.subscribe('storage:changed', ({ path: changed }) => {
+  if (changed === 'settings.quietMode' || changed === 'settings.doNotDisturb') showRestingMood();
+});
+
+// ---------- Remember position (through the storage layer) ----------
 function loadPosition() {
   const pos = storage.get('buddy');
   if (pos && pos.x !== null && pos.y !== null) {
@@ -56,7 +103,15 @@ function createWindow() {
 
   win.setAlwaysOnTop(true, 'screen-saver');
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
-  win.on('move', savePosition); // storage groups rapid moves into one write
+  win.webContents.once('did-finish-load', showRestingMood);
+  win.on('move', () => {
+    savePosition();
+    onActivity(); // picking up the buddy wakes it
+  });
+  win.on('system-context-menu', event => {
+    event.preventDefault();                        // block the Windows menu
+    if (trayMenu) trayMenu.popup({ window: win }); // show our own instead
+  });
 }
 
 // ---------- Tray icon ----------
@@ -79,23 +134,41 @@ function makeTrayIcon() {
 
 function toggleBuddy() {
   if (!win) return;
-  if (win.isVisible()) win.hide();
-  else win.show();
+  if (win.isVisible()) {
+    win.hide();
+  } else {
+    win.show();
+    showRestingMood(); // pops back in
+  }
 }
+
+let trayMenu = null;
 
 function createTray() {
   tray = new Tray(makeTrayIcon());
   tray.setToolTip('Desktop Buddy');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Show / Hide buddy', click: toggleBuddy },
-      { type: 'separator' },
-      { label: 'Quit', click: () => app.quit() },
-    ])
-  );
+  trayMenu = Menu.buildFromTemplate([
+    { label: 'Show / Hide buddy', click: toggleBuddy },
+    {
+      label: 'Quiet mode',
+      type: 'checkbox',
+      checked: !!storage.get('settings.quietMode'),
+      click: item => storage.set('settings.quietMode', item.checked),
+    },
+    {
+      label: 'Preview animation',
+      submenu: [
+        { label: 'Idle', click: () => bus.publish('buddy:mood', 'idle') },
+        { label: 'Pop in', click: () => bus.publish('buddy:mood', 'popin') },
+        { label: 'Sleepy', click: () => bus.publish('buddy:mood', 'sleepy') },
+      ],
+    },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(trayMenu);
   tray.on('click', toggleBuddy);
 }
-
 // ---------- Core wiring ----------
 // Temporary: print every event so you can watch the bus working.
 bus.subscribe('*', (data, event) => {
@@ -119,7 +192,7 @@ app.whenReady().then(() => {
   }, 2000);
 });
 
-app.on('before-quit', () => storage.flush()); // make sure the last change is saved
+app.on('before-quit', () => storage.flush());
 
 // The app keeps running in the tray, so closing windows does not quit it
 app.on('window-all-closed', () => {});

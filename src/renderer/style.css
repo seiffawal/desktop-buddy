@@ -14,13 +14,68 @@ body {
 }
 
 .buddy {
-  font-size: 52px;
-  line-height: 1;
-  animation: breathe 3s ease-in-out infinite;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
 }
+
+.face {
+  display: block;
+  font-size: 52px;
+  line-height: 1;
+}
+
+.extra {
+  position: absolute;
+  top: -10px;
+  right: -16px;
+  font-size: 18px;
+  opacity: 0;
+}
+
+/* ---------- Animations (names match "animation" in character.json) ---------- */
+.anim-breathe { animation: breathe 3s ease-in-out infinite; }
+.anim-popin   { animation: popin 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.anim-sleepy  { animation: sleepy 4s ease-in-out infinite; }
+
+.anim-sleepy .face  { opacity: 0.8; }
+.anim-sleepy .extra { animation: zzz 3s ease-in-out infinite; }
+
+.face.hop { animation: hop 0.9s ease-out; }
 
 @keyframes breathe {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.06); }
 }
+
+@keyframes popin {
+  0%   { transform: translateY(40px) scale(0); opacity: 0; }
+  60%  { transform: translateY(-8px) scale(1.15); opacity: 1; }
+  80%  { transform: translateY(0) scale(0.95); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes sleepy {
+  0%, 100% { transform: translateY(2px) rotate(-6deg) scale(1); }
+  50%      { transform: translateY(4px) rotate(-6deg) scale(1.03); }
+}
+
+@keyframes zzz {
+  0%   { opacity: 0; transform: translate(0, 6px) scale(0.7); }
+  30%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(4px, -6px) scale(1.1); }
+}
+
+@keyframes hop {
+  0%   { transform: translateY(0); }
+  30%  { transform: translateY(-12px); }
+  50%  { transform: translateY(0); }
+  65%  { transform: translateY(-5px); }
+  80%  { transform: translateY(0); }
+  100% { transform: translateY(0); }
+}
+
+/* Used when the window is hidden, so nothing animates for nobody */
+body.paused * { animation-play-state: paused !important; }

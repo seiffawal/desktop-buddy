@@ -1,4 +1,6 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, powerMonitor } = require('electron');
+const {
+  app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, powerMonitor, shell,
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const bus = require('../core/bus');
@@ -6,13 +8,19 @@ const storage = require('../core/storage');
 const queue = require('../core/queue');
 const { createMessage, PRIORITY } = require('../core/message');
 const pomodoro = require('../modules/pomodoro');
+const tasks = require('../modules/tasks');
 
 const WIN_SIZE = 90;
 const EXPANDED_WIDTH = 260;
 const CHARACTER = 'chick';                 // folder name in assets/characters
 const SLEEP_AFTER_MS = 10 * 60 * 1000;     // sleepy after 10 minutes without activity
+const ASSETS = path.join(__dirname, '../../assets');
+
+// Developer extras (test menus, event log) only show when running from source
+const isDev = !app.isPackaged;
 
 let win = null;
+let tasksWin = null;
 let tray = null;
 let sleeping = false;
 let sleepTimer = null;
@@ -23,19 +31,34 @@ let expandOffset = null;     // how far the big window sits from restPos (null =
 let suppressMoveUntil = 0;   // ignore 'move' events that we caused ourselves
 let shownForBubble = false;  // the window was hidden and a bubble showed it
 
+app.setAppUserModelId('com.desktopbuddy.app'); // groups the taskbar entry on Windows
+
 // Only one copy of the app at a time
 if (!app.requestSingleInstanceLock()) {
-  app.quit();
+  app.exit(0);
 }
+
+// Starting the app a second time just waves hello from the first one
+app.on('second-instance', () => {
+  if (!win || win.isDestroyed()) return;
+  if (!win.isVisible()) toggleBuddy();
+  else showRestingMood();
+});
 
 // Shortcut: make a message and put it on the bus
 function say(fields) {
   bus.publish('buddy:message', createMessage(fields));
 }
 
+// Our windows only ever show our own pages: no navigation, no pop-ups
+function lockDown(webContents) {
+  webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  webContents.on('will-navigate', event => event.preventDefault());
+}
+
 // ---------- Character data ----------
 ipcMain.handle('buddy:character', () => {
-  const file = path.join(__dirname, '../../assets/characters', CHARACTER, 'character.json');
+  const file = path.join(ASSETS, 'characters', CHARACTER, 'character.json');
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 });
 
@@ -189,15 +212,20 @@ function createWindow() {
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
       autoplayPolicy: 'no-user-gesture-required', // lets chimes play without a click
     },
   });
 
+  lockDown(win.webContents);
   win.setAlwaysOnTop(true, 'screen-saver');
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.webContents.once('did-finish-load', () => {
     showRestingMood();
     pomodoro.restore(); // pick up an unfinished session from last time
+    tasks.start();      // start watching task times (may fire missed reminders)
     sendTimerDisplay();
   });
   win.on('move', onWindowMoved);
@@ -206,6 +234,48 @@ function createWindow() {
     buildTrayMenu().popup({ window: win });     // show our own, freshly built
   });
 }
+
+// ---------- The tasks window ----------
+function openTasksWindow() {
+  if (tasksWin && !tasksWin.isDestroyed()) {
+    if (tasksWin.isMinimized()) tasksWin.restore();
+    tasksWin.show();
+    tasksWin.focus();
+    return;
+  }
+  tasksWin = new BrowserWindow({
+    width: 390,
+    height: 540,
+    minWidth: 330,
+    minHeight: 380,
+    title: 'Buddy Tasks',
+    icon: path.join(ASSETS, 'icon.ico'),
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      preload: path.join(__dirname, 'tasks-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  lockDown(tasksWin.webContents);
+  tasksWin.setMenu(null);
+  tasksWin.loadFile(path.join(__dirname, '../renderer/tasks.html'));
+  tasksWin.once('ready-to-show', () => tasksWin.show());
+  tasksWin.on('closed', () => { tasksWin = null; });
+}
+
+ipcMain.handle('tasks:list', () => tasks.list());
+ipcMain.handle('tasks:add', (event, input) => tasks.add(input));
+ipcMain.handle('tasks:toggle', (event, id) => tasks.toggleDone(String(id)));
+ipcMain.handle('tasks:remove', (event, id) => tasks.remove(String(id)));
+ipcMain.handle('tasks:clear-done', () => tasks.clearDone());
+
+bus.subscribe('tasks:changed', () => {
+  if (tasksWin && !tasksWin.isDestroyed()) tasksWin.webContents.send('tasks:changed');
+});
 
 // ---------- Bubbles: bus <-> window ----------
 bus.subscribe('bubble:show', ({ message, compact }) => {
@@ -244,7 +314,12 @@ ipcMain.on('bubble:closed', (event, payload) => {
 });
 
 // ---------- Tray icon and menu ----------
+// Uses assets/icon.ico (or icon.png). Falls back to a drawn teal dot if neither loads.
 function makeTrayIcon() {
+  for (const name of ['icon.ico', 'icon.png']) {
+    const image = nativeImage.createFromPath(path.join(ASSETS, name));
+    if (!image.isEmpty()) return image.resize({ width: 16, height: 16 });
+  }
   const size = 16;
   const buf = Buffer.alloc(size * size * 4);
   const c = (size - 1) / 2;
@@ -305,11 +380,13 @@ function pomodoroItems(st) {
       click: () => bus.publish('pomodoro:preset', key),
     })),
   });
-  items.push({
-    label: 'Quick test (short phases)',
-    enabled: st.phase === 'idle',
-    click: () => bus.publish('pomodoro:start', { fast: true }),
-  });
+  if (isDev) {
+    items.push({
+      label: 'Quick test (short phases)',
+      enabled: st.phase === 'idle',
+      click: () => bus.publish('pomodoro:start', { fast: true }),
+    });
+  }
   return items;
 }
 
@@ -335,36 +412,34 @@ function soundItems() {
   ];
 }
 
-// Built fresh every time it opens, so the time left and the checkboxes are always current
-function buildTrayMenu() {
-  const st = pomodoro.status();
-  return Menu.buildFromTemplate([
-    { label: pomodoroLabel(st), submenu: pomodoroItems(st) },
-    { label: 'Sound', submenu: soundItems() },
+function snoozeItems() {
+  const current = Number(storage.get('settings.snoozeMinutes')) || 5;
+  return [1, 5, 10, 15].map(minutes => ({
+    label: `${minutes} minute${minutes === 1 ? '' : 's'}`,
+    type: 'radio',
+    checked: current === minutes,
+    click: () => storage.set('settings.snoozeMinutes', minutes),
+  }));
+}
+
+function startsWithWindows() {
+  try {
+    return app.getLoginItemSettings().openAtLogin;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Extra menus for people working on the code (never shown in the installed app)
+function devItems() {
+  return [
     { type: 'separator' },
-    { label: 'Show / Hide buddy', click: toggleBuddy },
-    {
-      label: 'Quiet mode',
-      type: 'checkbox',
-      checked: !!storage.get('settings.quietMode'),
-      click: item => storage.set('settings.quietMode', item.checked),
-    },
-    {
-      label: 'Do not disturb (prayer only)',
-      type: 'checkbox',
-      checked: !!storage.get('settings.doNotDisturb'),
-      click: item => storage.set('settings.doNotDisturb', item.checked),
-    },
     {
       label: 'Preview animation',
-      submenu: [
-        { label: 'Idle', click: () => bus.publish('buddy:mood', 'idle') },
-        { label: 'Pop in', click: () => bus.publish('buddy:mood', 'popin') },
-        { label: 'Sleepy', click: () => bus.publish('buddy:mood', 'sleepy') },
-        { label: 'Focus', click: () => bus.publish('buddy:mood', 'focus') },
-        { label: 'Break', click: () => bus.publish('buddy:mood', 'break') },
-        { label: 'Done', click: () => bus.publish('buddy:mood', 'done') },
-      ],
+      submenu: ['idle', 'popin', 'sleepy', 'focus', 'break', 'done'].map(mood => ({
+        label: mood,
+        click: () => bus.publish('buddy:mood', mood),
+      })),
     },
     {
       label: 'Test bubbles',
@@ -376,7 +451,7 @@ function buildTrayMenu() {
         {
           label: 'Task reminder (Done / Snooze)',
           click: () => say({
-            text: 'Time to review your notes', from: 'tasks',
+            text: 'Time to review your notes', from: 'test',
             buttons: ['Done', 'Snooze'], duration: 0, mood: 'popin', snoozeMinutes: 0.2,
           }),
         },
@@ -400,7 +475,46 @@ function buildTrayMenu() {
         },
       ],
     },
+  ];
+}
+
+// Built fresh every time it opens, so the time left and the checkboxes are always current
+function buildTrayMenu() {
+  const st = pomodoro.status();
+  const count = tasks.todayCount();
+  return Menu.buildFromTemplate([
+    { label: pomodoroLabel(st), submenu: pomodoroItems(st) },
+    { label: count > 0 ? `Tasks... (${count} today)` : 'Tasks...', click: openTasksWindow },
     { type: 'separator' },
+    { label: 'Show / Hide buddy', click: toggleBuddy },
+    {
+      label: 'Quiet mode',
+      type: 'checkbox',
+      checked: !!storage.get('settings.quietMode'),
+      click: item => storage.set('settings.quietMode', item.checked),
+    },
+    {
+      label: 'Do not disturb (prayer only)',
+      type: 'checkbox',
+      checked: !!storage.get('settings.doNotDisturb'),
+      click: item => storage.set('settings.doNotDisturb', item.checked),
+    },
+    { label: 'Sound', submenu: soundItems() },
+    { label: 'Snooze length', submenu: snoozeItems() },
+    {
+      label: app.isPackaged ? 'Start with Windows' : 'Start with Windows (installed app only)',
+      type: 'checkbox',
+      enabled: app.isPackaged,
+      checked: startsWithWindows(),
+      click: item => app.setLoginItemSettings({ openAtLogin: item.checked }),
+    },
+    ...(isDev ? devItems() : []),
+    { type: 'separator' },
+    { label: 'Open data folder', click: () => shell.openPath(app.getPath('userData')) },
+    {
+      label: 'About Desktop Buddy',
+      click: () => say({ text: `Desktop Buddy v${app.getVersion()} 🐣`, from: 'system', duration: 4000 }),
+    },
     { label: 'Quit', click: () => app.quit() },
   ]);
 }
@@ -425,19 +539,22 @@ function onPomodoroChange() {
 bus.subscribe('pomodoro:tick', onPomodoroChange);
 bus.subscribe('pomodoro:state', onPomodoroChange);
 
-// ---------- Core wiring ----------
-// Temporary: print events so you can watch the bus working.
-bus.subscribe('*', (data, event) => {
-  if (event !== 'storage:changed' && event !== 'pomodoro:tick') console.log(`[bus] ${event}`);
-});
-bus.subscribe('buddy:action', ({ message, action }) => {
-  console.log(`[buddy] "${message.text}" -> ${action}`);
-});
+// ---------- Developer log ----------
+if (isDev) {
+  bus.subscribe('*', (data, event) => {
+    if (event !== 'storage:changed' && event !== 'pomodoro:tick') console.log(`[bus] ${event}`);
+  });
+  bus.subscribe('buddy:action', ({ message, action }) => {
+    console.log(`[buddy] "${message.text}" -> ${action}`);
+  });
+}
 
+// ---------- Start ----------
 app.whenReady().then(() => {
   storage.init(app.getPath('userData'));
   queue.init();
   pomodoro.init();
+  tasks.init();
   createWindow();
   createTray();
 
@@ -446,9 +563,6 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => bus.publish('system:resume'));
 
   bus.publish('app:ready');
-
-  // Temporary greeting, delete when you like
-  setTimeout(() => say({ text: 'Core is working', from: 'system', mood: 'popin' }), 2000);
 });
 
 app.on('before-quit', () => storage.flush());

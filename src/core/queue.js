@@ -68,7 +68,7 @@ function close(id, action) {
   clearTimeout(showTimer);
   bus.publish('bubble:hide');
   bus.publish('buddy:action', { message: msg, action }); // modules listen for Done, Snooze, ...
-  if (String(action).toLowerCase() === 'snooze') snooze(msg);
+  if (String(action).toLowerCase() === 'snooze' && msg.autoSnooze !== false) snooze(msg);
   gapTimer = setTimeout(() => { gapTimer = null; pump(); }, GAP_MS);
 }
 
@@ -82,7 +82,7 @@ function init() {
 
 const hasWaiting = () => queue.some(allowed);
 
-function reset() { // for tests
+function reset() { // used by the self-test
   queue = []; current = null;
   clearTimeout(showTimer); clearTimeout(gapTimer); gapTimer = null;
   snoozeTimers.forEach(clearTimeout); snoozeTimers.clear();

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'" />
+    <title>Buddy Tasks</title>
+    <link rel="stylesheet" href="tasks.css" />
+  </head>
+  <body>
+    <h1>Tasks</h1>
+
+    <form id="form" autocomplete="off">
+      <input id="text" type="text" maxlength="120" dir="auto"
+             placeholder="What should I remind you about?" />
+      <div class="row">
+        <input id="time" type="time" required />
+        <select id="when">
+          <option value="today">Today</option>
+          <option value="tomorrow">Tomorrow</option>
+          <option value="daily">Every day</option>
+        </select>
+        <button type="submit" class="primary">Add</button>
+      </div>
+      <p id="error" class="error" role="alert"></p>
+    </form>
+
+    <ul id="list"></ul>
+    <p id="empty" class="empty">No tasks yet. Add one above 🐣</p>
+
+    <div class="footer">
+      <button id="clear" type="button" class="link">Clear finished</button>
+    </div>
+
+    <script src="tasks.js"></script>
+  </body>
+</html>

@@ -16,6 +16,7 @@ body {
 }
 
 .stage {
+  position: relative;
   flex: none;
   width: 90px;
   height: 90px;
@@ -47,12 +48,19 @@ body {
 }
 
 /* ---------- Buddy animations (names match "animation" in character.json) ---------- */
-.anim-breathe { animation: breathe 3s ease-in-out infinite; }
-.anim-popin   { animation: popin 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
-.anim-sleepy  { animation: sleepy 4s ease-in-out infinite; }
+.anim-breathe   { animation: breathe 3s ease-in-out infinite; }
+.anim-popin     { animation: popin 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.anim-sleepy    { animation: sleepy 4s ease-in-out infinite; }
+.anim-focus     { animation: focusBob 5s ease-in-out infinite; }
+.anim-stretch   { animation: stretch 3.5s ease-in-out infinite; }
+.anim-celebrate { animation: celebrate 0.7s ease-in-out 3; }
 
 .anim-sleepy .face  { opacity: 0.8; }
 .anim-sleepy .extra { animation: zzz 3s ease-in-out infinite; }
+
+.anim-focus .extra,
+.anim-stretch .extra,
+.anim-celebrate .extra { opacity: 1; }
 
 .face.hop { animation: hop 0.9s ease-out; }
 
@@ -88,6 +96,27 @@ body {
   100% { transform: translateY(0); }
 }
 
+/* Focus: calm, leaning slightly forward, barely moving */
+@keyframes focusBob {
+  0%, 100% { transform: translateY(0) rotate(4deg); }
+  50%      { transform: translateY(-2px) rotate(4deg); }
+}
+
+/* Break: a slow stretch */
+@keyframes stretch {
+  0%, 100% { transform: scale(1, 1); }
+  35%      { transform: scale(1.12, 0.9); }
+  70%      { transform: scale(0.94, 1.1); }
+}
+
+/* Done: three happy hops */
+@keyframes celebrate {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30%      { transform: translateY(-14px) rotate(-8deg); }
+  60%      { transform: translateY(0) rotate(8deg); }
+}
+
+/* Used when the window is hidden, so nothing animates for nobody */
 body.paused * { animation-play-state: paused !important; }
 
 /* ---------- Speech bubble ---------- */
@@ -165,37 +194,8 @@ body.paused * { animation-play-state: paused !important; }
   0%   { transform: translateY(0) scale(1); opacity: 1; }
   100% { transform: translateY(8px) scale(0.9); opacity: 0; }
 }
-/* ---------- Pomodoro moods ---------- */
-.anim-focus   { animation: focusBob 5s ease-in-out infinite; }
-.anim-stretch { animation: stretch 3.5s ease-in-out infinite; }
-.anim-celebrate { animation: celebrate 0.7s ease-in-out 3; }
 
-.anim-focus .extra,
-.anim-stretch .extra,
-.anim-celebrate .extra { opacity: 1; }
-
-/* Focus: calm, leaning slightly forward, barely moving */
-@keyframes focusBob {
-  0%, 100% { transform: translateY(0) rotate(4deg); }
-  50%      { transform: translateY(-2px) rotate(4deg); }
-}
-
-/* Break: a slow stretch */
-@keyframes stretch {
-  0%, 100% { transform: scale(1, 1); }
-  35%      { transform: scale(1.12, 0.9); }
-  70%      { transform: scale(0.94, 1.1); }
-}
-
-/* Done: three happy hops */
-@keyframes celebrate {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  30%      { transform: translateY(-14px) rotate(-8deg); }
-  60%      { transform: translateY(0) rotate(8deg); }
-}
 /* ---------- Countdown under the buddy ---------- */
-.stage { position: relative; }
-
 .timer {
   display: none;
   position: absolute;
@@ -213,3 +213,7 @@ body.paused * { animation-play-state: paused !important; }
 }
 .timer.visible { display: block; }
 .timer.paused  { opacity: 0.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-breathe, .anim-focus, .anim-stretch, .anim-sleepy { animation-duration: 12s; }
+}

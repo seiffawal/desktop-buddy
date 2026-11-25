@@ -258,9 +258,7 @@ function applyPreset(name) {
 function validFast(f) {
   if (!f || typeof f !== 'object') return null;
   const keys = ['focus', 'break', 'longBreak', 'rounds'];
-  return keys.every(k => Number(f[k]) > 0)
-    ? { focus: +f.focus, break: +f.break, longBreak: +f.longBreak, rounds: +f.rounds }
-    : null;
+  return keys.every(k => Number(f[k]) > 0) ? { focus: +f.focus, break: +f.break, longBreak: +f.longBreak, rounds: +f.rounds } : null;
 }
 
 // Call once the buddy window is ready, because it may show a bubble

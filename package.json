@@ -1,28 +1,69 @@
 {
   "name": "desktop-buddy",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "A small desktop buddy that reminds you of Pomodoro sessions and tasks, with prayer times on the way.",
   "main": "src/main/main.js",
-  "scripts": {
-    "start": "electron .",
-    "test:core": "node src/core/selftest.js"
-  },
+  "author": "seiffawal",
+  "license": "MIT",
+  "homepage": "https://github.com/seiffawal/desktop-buddy#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/seiffawal/desktop-buddy.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/seiffawal/desktop-buddy/issues"
   },
-  "homepage": "https://github.com/seiffawal/desktop-buddy#readme",
+  "keywords": [
+    "electron",
+    "desktop-pet",
+    "pomodoro",
+    "reminders",
+    "prayer-times",
+    "windows"
+  ],
+  "scripts": {
+    "start": "electron .",
+    "test": "node src/core/selftest.js && node test/queue.test.js && node test/pomodoro.test.js && node test/pomodoro-resume.test.js && node test/tasks.test.js",
+    "test:core": "node src/core/selftest.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
+  },
   "dependencies": {
-    "adhan": "^4.4.6"
+    "adhan": "^4.4.3"
   },
   "devDependencies": {
-    "electron": "^45.5.0"
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.desktopbuddy.app",
+    "productName": "Desktop Buddy",
+    "copyright": "Copyright (c) 2026 seiffawal",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "!src/core/selftest.js"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Desktop Buddy"
+    }
   }
 }

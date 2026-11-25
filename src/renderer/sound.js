@@ -38,6 +38,11 @@ const SOUNDS = {
     note(880.00, 0.00, 0.8, v);
     note(659.25, 0.22, 1.3, v);
   },
+  // Task due: one clear, soft ping, repeated once
+  'task': v => {
+    note(987.77, 0.00, 0.7, v);
+    note(987.77, 0.25, 1.0, v * 0.8);
+  },
 };
 
 window.buddy.onSound(({ name, volume }) => {

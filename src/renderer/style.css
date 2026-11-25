@@ -1,0 +1,26 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-app-region: drag; /* drag the buddy to move the window */
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.buddy {
+  font-size: 52px;
+  line-height: 1;
+  animation: breathe 3s ease-in-out infinite;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}

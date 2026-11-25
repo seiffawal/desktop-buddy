@@ -4,6 +4,9 @@
   "moods": {
     "idle": { "emoji": "🐣", "animation": "breathe" },
     "popin": { "emoji": "🐥", "animation": "popin", "once": true, "duration": 900 },
-    "sleepy": { "emoji": "🐣", "animation": "sleepy", "extra": "💤" }
+    "sleepy": { "emoji": "🐣", "animation": "sleepy", "extra": "💤" },
+    "focus": { "emoji": "🐥", "animation": "focus", "extra": "✏️" },
+    "break": { "emoji": "🐥", "animation": "stretch", "extra": "☕" },
+    "done": { "emoji": "🐥", "animation": "celebrate", "extra": "🎉", "once": true, "duration": 2200 }
   }
 }

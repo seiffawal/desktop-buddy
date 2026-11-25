@@ -5,6 +5,7 @@ const bus = require('../core/bus');
 const storage = require('../core/storage');
 const queue = require('../core/queue');
 const { createMessage, PRIORITY } = require('../core/message');
+const pomodoro = require('../modules/pomodoro');
 
 const WIN_SIZE = 90;
 const EXPANDED_WIDTH = 260;
@@ -13,9 +14,9 @@ const SLEEP_AFTER_MS = 10 * 60 * 1000;     // sleepy after 10 minutes without ac
 
 let win = null;
 let tray = null;
-let trayMenu = null;
 let sleeping = false;
 let sleepTimer = null;
+let baseMood = 'idle';       // what the buddy looks like at rest: idle, focus or break
 
 let restPos = null;          // where the buddy window sits when it is small
 let expandOffset = null;     // how far the big window sits from restPos (null = window is small)
@@ -24,7 +25,7 @@ let shownForBubble = false;  // the window was hidden and a bubble showed it
 
 // Only one copy of the app at a time
 if (!app.requestSingleInstanceLock()) {
-  app.quit()
+  app.quit();
 }
 
 // Shortcut: make a message and put it on the bus
@@ -41,24 +42,38 @@ ipcMain.handle('buddy:character', () => {
 // ---------- Moods ----------
 const quiet = () => storage.get('settings.quietMode') || storage.get('settings.doNotDisturb');
 
-// Any module can change the buddy's mood: bus.publish('buddy:mood', 'idle')
+// Low level: change the buddy's mood right now
 bus.subscribe('buddy:mood', mood => {
   if (mood === 'sleepy') sleeping = true;
   else if (mood !== 'popin') sleeping = false;
   if (win && !win.isDestroyed()) win.webContents.send('buddy:mood', mood);
 });
 
+// For modules: "while I am active, the buddy rests in this mood" (focus, break, idle)
+bus.subscribe('buddy:base-mood', mood => {
+  baseMood = mood || 'idle';
+  if (!quiet()) bus.publish('buddy:mood', baseMood);
+  resetSleepTimer();
+});
+
+// For modules: a one-time reaction such as 'done'. Quiet mode keeps the buddy calm.
+bus.subscribe('buddy:react', mood => {
+  if (!quiet()) bus.publish('buddy:mood', mood);
+});
+
 function resetSleepTimer() {
   clearTimeout(sleepTimer);
-  sleepTimer = setTimeout(() => bus.publish('buddy:mood', 'sleepy'), SLEEP_AFTER_MS);
+  sleepTimer = setTimeout(() => {
+    if (baseMood === 'idle') bus.publish('buddy:mood', 'sleepy'); // never doze off mid-focus
+  }, SLEEP_AFTER_MS);
 }
 
-// The buddy's normal state: sleepy in quiet mode, otherwise idle with a pop-in
+// The buddy's normal state: sleepy in quiet mode, otherwise its base mood with a pop-in
 function showRestingMood() {
   if (quiet()) {
     bus.publish('buddy:mood', 'sleepy');
   } else {
-    bus.publish('buddy:mood', 'idle');
+    bus.publish('buddy:mood', baseMood);
     bus.publish('buddy:mood', 'popin');
   }
   resetSleepTimer();
@@ -148,8 +163,8 @@ function createWindow() {
   win.webContents.once('did-finish-load', showRestingMood);
   win.on('move', onWindowMoved);
   win.on('system-context-menu', event => {
-    event.preventDefault();                        // block the Windows menu
-    if (trayMenu) trayMenu.popup({ window: win }); // show our own instead
+    event.preventDefault();                          // block the Windows menu
+    buildTrayMenu().popup({ window: win });          // show our own, freshly built
   });
 }
 
@@ -188,7 +203,7 @@ ipcMain.on('bubble:closed', (event, payload) => {
   bus.publish('bubble:closed', { id: String(payload.id), action: String(payload.action) });
 });
 
-// ---------- Tray icon ----------
+// ---------- Tray icon and menu ----------
 function makeTrayIcon() {
   const size = 16;
   const buf = Buffer.alloc(size * size * 4);
@@ -217,10 +232,48 @@ function toggleBuddy() {
   }
 }
 
-function createTray() {
-  tray = new Tray(makeTrayIcon());
-  tray.setToolTip('Desktop Buddy');
-  trayMenu = Menu.buildFromTemplate([
+function formatTime(ms) {
+  const total = Math.ceil(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function pomodoroLabel(st) {
+  if (st.phase === 'idle') return 'Pomodoro';
+  const name = st.phase === 'focus' ? `Focus ${st.round}/${st.rounds}`
+    : st.phase === 'break' ? 'Break' : 'Long break';
+  return `${name} - ${formatTime(st.remainingMs)}${st.running ? '' : ' (paused)'}`;
+}
+
+function pomodoroItems(st) {
+  const items = [];
+  if (st.phase === 'idle') {
+    items.push({ label: 'Start focus', click: () => bus.publish('pomodoro:start') });
+  } else if (st.running) {
+    items.push({ label: 'Pause', click: () => bus.publish('pomodoro:pause') });
+  } else {
+    items.push({ label: 'Resume', click: () => bus.publish('pomodoro:resume') });
+  }
+  if (st.phase !== 'idle') {
+    items.push({ label: 'Skip to next', click: () => bus.publish('pomodoro:skip') });
+    items.push({ label: 'Reset', click: () => bus.publish('pomodoro:reset') });
+  }
+  items.push({ type: 'separator' });
+  items.push({
+    label: 'Quick test (short phases)',
+    enabled: st.phase === 'idle',
+    click: () => bus.publish('pomodoro:start', { fast: true }),
+  });
+  return items;
+}
+
+// Built fresh every time it opens, so the time left and the checkboxes are always current
+function buildTrayMenu() {
+  const st = pomodoro.status();
+  return Menu.buildFromTemplate([
+    { label: pomodoroLabel(st), submenu: pomodoroItems(st) },
+    { type: 'separator' },
     { label: 'Show / Hide buddy', click: toggleBuddy },
     {
       label: 'Quiet mode',
@@ -240,6 +293,9 @@ function createTray() {
         { label: 'Idle', click: () => bus.publish('buddy:mood', 'idle') },
         { label: 'Pop in', click: () => bus.publish('buddy:mood', 'popin') },
         { label: 'Sleepy', click: () => bus.publish('buddy:mood', 'sleepy') },
+        { label: 'Focus', click: () => bus.publish('buddy:mood', 'focus') },
+        { label: 'Break', click: () => bus.publish('buddy:mood', 'break') },
+        { label: 'Done', click: () => bus.publish('buddy:mood', 'done') },
       ],
     },
     {
@@ -279,14 +335,28 @@ function createTray() {
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ]);
-  tray.setContextMenu(trayMenu);
-  tray.on('click', toggleBuddy);
 }
+
+function updateTooltip() {
+  if (!tray) return;
+  const st = pomodoro.status();
+  tray.setToolTip(st.phase === 'idle' ? 'Desktop Buddy' : `Desktop Buddy - ${pomodoroLabel(st)}`);
+}
+
+function createTray() {
+  tray = new Tray(makeTrayIcon());
+  updateTooltip();
+  tray.on('click', toggleBuddy);
+  tray.on('right-click', () => tray.popUpContextMenu(buildTrayMenu()));
+}
+
+bus.subscribe('pomodoro:tick', updateTooltip);
+bus.subscribe('pomodoro:state', updateTooltip);
 
 // ---------- Core wiring ----------
 // Temporary: print events so you can watch the bus working.
 bus.subscribe('*', (data, event) => {
-  if (event !== 'storage:changed') console.log(`[bus] ${event}`);
+  if (event !== 'storage:changed' && event !== 'pomodoro:tick') console.log(`[bus] ${event}`);
 });
 bus.subscribe('buddy:action', ({ message, action }) => {
   console.log(`[buddy] "${message.text}" -> ${action}`);
@@ -295,6 +365,7 @@ bus.subscribe('buddy:action', ({ message, action }) => {
 app.whenReady().then(() => {
   storage.init(app.getPath('userData'));
   queue.init();
+  pomodoro.init();
   createWindow();
   createTray();
   bus.publish('app:ready');

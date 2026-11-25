@@ -165,3 +165,31 @@ body.paused * { animation-play-state: paused !important; }
   0%   { transform: translateY(0) scale(1); opacity: 1; }
   100% { transform: translateY(8px) scale(0.9); opacity: 0; }
 }
+/* ---------- Pomodoro moods ---------- */
+.anim-focus   { animation: focusBob 5s ease-in-out infinite; }
+.anim-stretch { animation: stretch 3.5s ease-in-out infinite; }
+.anim-celebrate { animation: celebrate 0.7s ease-in-out 3; }
+
+.anim-focus .extra,
+.anim-stretch .extra,
+.anim-celebrate .extra { opacity: 1; }
+
+/* Focus: calm, leaning slightly forward, barely moving */
+@keyframes focusBob {
+  0%, 100% { transform: translateY(0) rotate(4deg); }
+  50%      { transform: translateY(-2px) rotate(4deg); }
+}
+
+/* Break: a slow stretch */
+@keyframes stretch {
+  0%, 100% { transform: scale(1, 1); }
+  35%      { transform: scale(1.12, 0.9); }
+  70%      { transform: scale(0.94, 1.1); }
+}
+
+/* Done: three happy hops */
+@keyframes celebrate {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30%      { transform: translateY(-14px) rotate(-8deg); }
+  60%      { transform: translateY(0) rotate(8deg); }
+}

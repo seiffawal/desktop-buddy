@@ -1,0 +1,27 @@
+{
+  "name": "desktop-buddy",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seiffawal/desktop-buddy.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/seiffawal/desktop-buddy/issues"
+  },
+  "homepage": "https://github.com/seiffawal/desktop-buddy#readme",
+  "dependencies": {
+    "adhan": "^4.4.6"
+  },
+  "devDependencies": {
+    "electron": "^45.5.0"
+  }
+}

@@ -1,0 +1,1 @@
+// Bridge between the buddy window and the app core. Filled in on later days.

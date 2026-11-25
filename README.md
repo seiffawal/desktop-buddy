@@ -14,7 +14,7 @@
 
 ![Desktop Buddy demo preview](docs/demo.gif)
 
-[Watch the full demo video](https://github.com/seiffawal/desktop-buddy/releases/download/v0.1.0/2026-11-25.14-57-53.mp4).
+[Watch the full demo video](https://github.com/seiffawal/desktop-buddy/releases/download/v0.1.0/desktop-buddy-demo-2026-11-25.mp4).
 
 ## What it does
 

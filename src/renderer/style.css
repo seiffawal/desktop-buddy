@@ -7,7 +7,18 @@ html, body {
   -webkit-app-region: drag; /* drag the buddy to move the window */
 }
 
+/* The buddy sits at the bottom; the bubble grows above it */
 body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.stage {
+  flex: none;
+  width: 90px;
+  height: 90px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -35,7 +46,7 @@ body {
   opacity: 0;
 }
 
-/* ---------- Animations (names match "animation" in character.json) ---------- */
+/* ---------- Buddy animations (names match "animation" in character.json) ---------- */
 .anim-breathe { animation: breathe 3s ease-in-out infinite; }
 .anim-popin   { animation: popin 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
 .anim-sleepy  { animation: sleepy 4s ease-in-out infinite; }
@@ -77,5 +88,80 @@ body {
   100% { transform: translateY(0); }
 }
 
-/* Used when the window is hidden, so nothing animates for nobody */
 body.paused * { animation-play-state: paused !important; }
+
+/* ---------- Speech bubble ---------- */
+.bubble {
+  display: none;
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: 236px;
+  margin-bottom: 12px;          /* room for the tail */
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #222222;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font: 14px/1.4 'Segoe UI', system-ui, sans-serif;
+  transform-origin: 50% 100%;
+  -webkit-app-region: no-drag;  /* so clicks and buttons work */
+}
+
+.bubble::after {                /* the little tail pointing at the buddy */
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  margin-left: -8px;
+  border: 8px solid transparent;
+  border-bottom: 0;
+  border-top-color: #ffffff;
+}
+
+.bubble.measure { display: block; visibility: hidden; }
+.bubble.show    { display: block; animation: bubbleIn 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.bubble.hide    { display: block; animation: bubbleOut 0.22s ease-in both; }
+
+/* Quiet mode: smaller and calmer */
+.bubble.compact {
+  width: 180px;
+  padding: 6px 9px;
+  font-size: 12px;
+  border-radius: 11px;
+  opacity: 0.92;
+}
+
+.bubble-text { overflow-wrap: anywhere; }
+
+.bubble-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+.bubble-buttons:empty { display: none; }
+
+.bubble-buttons button {
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  background: #ececec;
+  color: #222222;
+}
+.bubble-buttons button:hover   { background: #dddddd; }
+.bubble-buttons button.primary { background: #2f9e8f; color: #ffffff; }
+.bubble-buttons button.primary:hover { background: #278679; }
+
+@keyframes bubbleIn {
+  0%   { transform: translateY(10px) scale(0.85); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes bubbleOut {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(8px) scale(0.9); opacity: 0; }
+}

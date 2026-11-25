@@ -12,7 +12,7 @@
 
 ## Demo
 
-![Desktop Buddy demo preview](docs/demo.gif)
+![Desktop Buddy demo preview](docs/demo-preview.gif)
 
 [Watch the full demo video](https://github.com/seiffawal/desktop-buddy/releases/download/v0.1.0/desktop-buddy-demo-2026-11-25.mp4).
 

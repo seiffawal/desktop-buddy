@@ -10,6 +10,12 @@
 
 > **Status: v0.1.0, first public preview.** Pomodoro and task reminders work today. Prayer times are the next feature; see the [roadmap](#roadmap).
 
+## Demo
+
+![Desktop Buddy demo preview](docs/demo.gif)
+
+[Watch the full demo video](https://github.com/seiffawal/desktop-buddy/releases/download/v0.1.0/2026-11-25.14-57-53.mp4).
+
 ## What it does
 
 - **A buddy on your screen.** Small, transparent, always on top, draggable. It remembers where you left it and falls asleep when you are away.
